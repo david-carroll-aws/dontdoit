@@ -3,7 +3,7 @@ Don't Do It - Mega Millions simulator that spends a million dollars so you don't
 
 Pick a budget from $5 to $5,000,000, buy tickets at $5 a pop, and watch the counters tick up while your balance goes the other direction. The big red number at the top is the whole point.
 
-See it action here - http://davidcarroll.cloud
+See it action here - http://davidcarroll.cloud/index.html?service=lottery
 
 <img width="1108" height="569" alt="image" src="https://github.com/user-attachments/assets/7bb9c7ef-d448-4df5-b960-54648ce5dc27" />
 
