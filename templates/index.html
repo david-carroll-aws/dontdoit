@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Don't Do It</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#181b22; --text:#e8eaed; --muted:#9aa0a6; --red:#ff5252; --green:#3ddc84; --blue:#5aa9ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:1000px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:3rem; margin:0; letter-spacing:-1px; }
+  .sub { color:var(--muted); margin:4px 0 24px; }
+  .card { background:var(--card); border-radius:12px; padding:16px; margin-bottom:16px; }
+  .presets { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+  button { background:#262b36; color:var(--text); border:1px solid #333a48; border-radius:8px; padding:8px 14px; cursor:pointer; font-size:.95rem; }
+  button:hover { background:#303747; }
+  button.go { background:var(--red); border-color:var(--red); color:#fff; font-weight:600; }
+  button.go:disabled { opacity:.5; cursor:default; }
+  input { background:#0f1115; color:var(--text); border:1px solid #333a48; border-radius:8px; padding:8px 10px; font-size:1rem; width:160px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; }
+  .stat .label { color:var(--muted); font-size:.8rem; text-transform:uppercase; letter-spacing:.05em; }
+  .stat .value { font-size:1.9rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .spent { color:var(--red); } .won { color:var(--green); } .net { color:var(--red); }
+
+  .hero { padding:24px; border:1px solid #2a2f3a; transition:border-color .3s, box-shadow .3s; }
+  .hero.losing { border-color:var(--red); box-shadow:0 0 28px rgba(255,82,82,.25), inset 0 0 60px rgba(255,82,82,.07); }
+  .hero .mini { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:12px; padding-bottom:22px; border-bottom:1px solid #2a2f3a; }
+  .hero .stat { text-align:center; }
+  .hero .value { font-size:clamp(1.4rem,3.6vw,2rem); white-space:nowrap; }
+  .loss { text-align:center; padding-top:26px; }
+  .loss .label { font-size:.95rem; letter-spacing:.2em; }
+  .loss-value { font-size:clamp(3rem,11vw,5.5rem); font-weight:800; line-height:1.05; font-variant-numeric:tabular-nums; color:var(--green); }
+  .hero.losing .loss-value { color:var(--red); text-shadow:0 0 24px rgba(255,82,82,.55); }
+  .loss-sub { color:var(--muted); min-height:1.4em; margin-top:12px; }
+  .hero.losing .loss-sub { color:#ffb4b4; }
+  .hero.slam { animation:slam .5s ease-out; }
+  @keyframes slam { 0%{transform:scale(1)} 20%{transform:scale(1.03) translateX(-6px)} 40%{transform:scale(1.03) translateX(6px)} 60%{transform:translateX(-4px)} 80%{transform:translateX(3px)} 100%{transform:none} }
+  #error { color:var(--red); margin-top:8px; min-height:1.2em; }
+  table { border-collapse:collapse; width:100%; font-variant-numeric:tabular-nums; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #262b36; }
+  th { color:var(--muted); font-weight:500; }
+  .draws { max-height:360px; overflow-y:auto; }
+  .ball { display:inline-block; min-width:28px; text-align:center; padding:2px 6px; margin-right:4px; border-radius:50%; background:#262b36; }
+  .ball.hit { background:var(--green); color:#000; font-weight:700; }
+  .ball.mega { background:#3a2f12; } .ball.mega.hit { background:#ffc83d; color:#000; }
+  .hidden { display:none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Don't Do It</h1>
+  <p class="sub">Mega Millions, $5 a ticket. Pick a budget and watch what happens.</p>
+
+  <div class="card">
+    <div class="presets" id="presets"></div>
+    <div class="row">
+      <label>Budget $ <input id="budget" type="number" min="5" max="{{ max_budget }}" step="5" value="10000"></label>
+      <button class="go" id="go">Spend it</button>
+    </div>
+    <div id="error"></div>
+  </div>
+
+  <div class="card hero" id="hero">
+    <div class="mini">
+      <div class="stat"><div class="label">Draws</div><div class="value" id="s-draws">0</div></div>
+      <div class="stat"><div class="label">Spent</div><div class="value spent" id="s-spent">$0</div></div>
+      <div class="stat"><div class="label">Won back</div><div class="value won" id="s-won">$0</div></div>
+      <div class="stat"><div class="label">Lost</div><div class="value spent" id="s-pct">0%</div></div>
+    </div>
+    <div class="loss">
+      <div class="label" id="loss-label">Net</div>
+      <div class="loss-value" id="s-net">$0</div>
+      <div class="loss-sub" id="s-sub">&nbsp;</div>
+    </div>
+  </div>
+
+  <div class="card"><div id="chart" style="height:380px"></div></div>
+
+  <div id="after" class="hidden">
+    <div class="card">
+      <h3 style="margin-top:0">Your numbers: <span id="mine"></span></h3>
+      <p id="best" class="sub"></p>
+      <table id="breakdown"></table>
+    </div>
+    <div class="card"><div id="freq" style="height:320px"></div></div>
+    <div class="card hidden" id="detail-card">
+      <h3 style="margin-top:0">Every draw</h3>
+      <div class="draws"><table id="detail"></table></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const money = n => (n < 0 ? "-$" : "$") + Math.abs(n).toLocaleString("en-US");
+const PRESETS = [10, 100, 1000, 10000, 100000, 1000000, 5000000];
+const plotBg = { paper_bgcolor:"rgba(0,0,0,0)", plot_bgcolor:"rgba(0,0,0,0)", font:{color:"#e8eaed"} };
+let timer = null;
+
+PRESETS.forEach(v => {
+  const b = document.createElement("button");
+  b.textContent = money(v);
+  b.onclick = () => { $("budget").value = v; run(); };
+  $("presets").appendChild(b);
+});
+
+function drawChart(frames, upto) {
+  const pts = frames.slice(0, upto + 1);
+  const x = pts.map(p => p[0]);
+  Plotly.react("chart", [
+    { x, y: pts.map(p => p[1]), name: "Spent", line: { color: "#ff5252" } },
+    { x, y: pts.map(p => p[2]), name: "Won", line: { color: "#3ddc84" } },
+    { x, y: pts.map(p => p[2] - p[1]), name: "Net", line: { color: "#5aa9ff", dash: "dot" } },
+  ], { ...plotBg, margin:{t:30,l:70,r:20,b:40}, title:"Spent vs. won",
+       xaxis:{ title:"Draws" }, yaxis:{ title:"Dollars", tickprefix:"$" }, legend:{ orientation:"h" } },
+     { displayModeBar:false, responsive:true });
+}
+
+function setStats(p) {
+  const spent = p[1], won = p[2], net = won - spent;
+  $("s-draws").textContent = p[0].toLocaleString("en-US");
+  $("s-spent").textContent = money(spent);
+  $("s-won").textContent = money(won);
+  $("s-net").textContent = money(net);
+  $("s-pct").textContent = net < 0 ? ((-net / spent) * 100).toFixed(1) + "%" : "0.0%";
+  const hero = $("hero");
+  if (net < 0) {
+    hero.classList.add("losing");
+    $("loss-label").textContent = "You're down";
+    $("s-sub").textContent = ((-net / spent) * 100).toFixed(1) + "% of your money, gone. You got back "
+      + ((won / spent) * 100).toFixed(1) + " cents on every dollar.";
+  } else {
+    hero.classList.remove("losing");
+    $("loss-label").textContent = "Net";
+    $("s-sub").innerHTML = "&nbsp;";
+  }
+}
+
+function slam() {
+  const hero = $("hero");
+  hero.classList.remove("slam");
+  void hero.offsetWidth;  // restart the animation
+  hero.classList.add("slam");
+}
+
+function showAfter(d) {
+  $("mine").textContent = d.my_main.join(", ") + "  +  " + d.my_bonus;
+  $("best").textContent = d.best_win > 0
+    ? "Biggest single win: " + money(d.best_win)
+    : "Biggest single win: nothing. Not one ticket paid.";
+  const rows = Object.entries(d.results).map(([k, c]) => {
+    const [m, b] = k.split("+");
+    return `<tr><td>${m} numbers${b === "B" ? " + Mega Ball" : ""}</td><td>${c.toLocaleString("en-US")}</td></tr>`;
+  }).join("");
+  $("breakdown").innerHTML = "<tr><th>Result</th><th>Times it happened</th></tr>" + rows;
+
+  Plotly.newPlot("freq", [
+    { x: d.main_freq.map((_, i) => i + 1), y: d.main_freq, type: "bar", marker:{ color:"#5aa9ff" } },
+  ], { ...plotBg, margin:{t:30,l:60,r:20,b:40}, title:"How often each main number was drawn",
+       xaxis:{ title:"Number" }, yaxis:{ title:"Times drawn" } }, { displayModeBar:false, responsive:true });
+
+  if (d.detail.length) {
+    const mine = new Set(d.my_main);
+    $("detail").innerHTML = "<tr><th>#</th><th>Numbers</th><th>Prize</th></tr>" + d.detail.map((r, i) => {
+      const balls = r.main.map(n => `<span class="ball ${mine.has(n) ? "hit" : ""}">${n}</span>`).join("");
+      const mega = `<span class="ball mega ${r.bonus_hit ? "hit" : ""}">${r.bonus}</span>`;
+      return `<tr><td>${i + 1}</td><td>${balls}${mega}</td><td>${r.prize ? money(r.prize) : "-"}</td></tr>`;
+    }).join("");
+    $("detail-card").classList.remove("hidden");
+  } else {
+    $("detail-card").classList.add("hidden");
+  }
+  $("after").classList.remove("hidden");
+}
+
+async function run() {
+  if ($("go").disabled) return;  // a run is already in progress
+  $("error").textContent = "";
+  $("after").classList.add("hidden");
+  clearInterval(timer);
+  const budget = parseInt($("budget").value, 10);
+  $("go").disabled = true;
+  try {
+    const resp = await fetch("/api/simulate?budget=" + budget);
+    const d = await resp.json();
+    if (d.error) { $("error").textContent = d.error; $("go").disabled = false; return; }
+    const frames = d.timeline;
+    let i = 0;
+    timer = setInterval(() => {
+      setStats(frames[i]);
+      drawChart(frames, i);
+      if (i >= frames.length - 1) {
+        clearInterval(timer);
+        showAfter(d);
+        slam();
+        $("go").disabled = false;
+      }
+      i++;
+    }, 30);
+  } catch (e) {
+    $("error").textContent = "Something went wrong talking to the server.";
+    $("go").disabled = false;
+  }
+}
+
+$("go").onclick = run;
+</script>
+</body>
+</html>
